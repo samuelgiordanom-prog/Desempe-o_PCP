@@ -22,9 +22,9 @@ En Windows, reemplaza `.venv/bin/python` por `.venv\Scripts\python.exe`.
 - `--cache .cache/cpf`: conserva los Excel descargados para siguientes ejecuciones. Las páginas se consultan siempre para detectar nuevas versiones.
 - `--actualizar`: vuelve a descargar los Excel aunque ya existan en caché, por ejemplo ante una corrección del archivo sin cambio de URL.
 
-Se incluye `datos/unidades.csv` con las 370 unidades únicas extraídas de la columna `Unidad` de la hoja `CPF` del anexo proporcionado (`2026.11.05 Anexo C. Control de Frecuencia.xlsx`). Puedes actualizar este CSV o pasar directamente otro Excel con `--unidades`.
+Se incluye `datos/unidades.csv` con las 95 unidades únicas verificadas (`Verificado = SI`) extraídas de la columna `Unidad` de la hoja `CPF` del anexo proporcionado (`2026.11.05 Anexo C. Control de Frecuencia.xlsx`). Puedes actualizar este CSV o pasar directamente otro Excel con `--unidades`.
 
-También se acepta un CSV UTF-8 con una columna `Unidad` (separadores coma, punto y coma o tabulación). En Excel se busca la cabecera en las primeras 50 filas de la hoja elegida. Se omiten celdas vacías y unidades duplicadas.
+También se acepta un CSV UTF-8 con una columna `Unidad` (separadores coma, punto y coma o tabulación). En Excel se busca la cabecera en las primeras 50 filas de la hoja elegida. En el Excel se exige la columna `Verificado` y se incluyen solo las filas con `SI`, antes de eliminar duplicados. En CSV también se aplica ese filtro si existe la columna; los CSV antiguos con solo `Unidad` se consideran listados previamente seleccionados. Se omiten celdas vacías y unidades duplicadas.
 
 ## Resultados
 
@@ -38,7 +38,7 @@ La carpeta de salida contiene:
 
 Cada CSV incluye `Unidad`, `Unidad_fuente`, `Fecha`, `Hora`, la métrica correspondiente, `Version` y `Fuente`. Se utiliza UTF-8 con BOM y coma como separador. La hora se conserva exactamente como figura en el Excel, sin convertirla a UTC ni agregar o quitar horas por cambios de horario. Se conserva el orden de la fuente dentro de cada mes.
 
-Las unidades se comparan ignorando mayúsculas, acentos y espacios repetidos. **No se hacen coincidencias aproximadas ni se descomponen nombres de arreglos o grupos de unidades**: nombres distintos se informan como ausentes para evitar asignar datos de otra unidad. Los valores de desempeño, textos y celdas vacías se conservan; nunca se convierten ausencias a cero ni se interpolan datos.
+Las unidades se comparan ignorando mayúsculas, acentos y espacios repetidos. **No se hacen coincidencias aproximadas ni se descomponen nombres de arreglos o grupos de unidades**: nombres distintos se informan como ausentes para evitar asignar datos de otra unidad. Cuando `Respuesta CPF+` y `Respuesta CPF-` contienen simultáneamente `No Participó`, se conserva la fila horaria con ambas métricas en NaN (escrito como `nan` en CSV). Se exigen ambas columnas de respuesta para evitar omitir esta regla silenciosamente. En los demás casos los valores de desempeño, textos y celdas vacías se conservan; nunca se convierten ausencias a cero ni se interpolan datos.
 
 Solo se procesan meses publicados; los futuros o todavía no publicados no se inventan. Si una carpeta de versión indica explícitamente `Sin documentos.`, se busca la siguiente versión y se registra la carpeta vacía en el reporte. Si todas las versiones están vacías, se registra el mes como no publicado. Una versión con documentos pero sin un Excel único, sin cabeceras requeridas o con fechas fuera de su mes detiene la ejecución con un error: esos errores no provocan el uso de una versión anterior. La salida se publica en su carpeta final únicamente si termina toda la extracción. Los Excel válidamente descargados quedan en caché si un paso posterior falla.
 
@@ -49,3 +49,17 @@ python3 -m unittest discover -s tests -v
 ```
 
 Las pruebas verifican selección de versión, paginación, selección de hoja y unidades, columnas reales de CPF, conservación de valores y horas repetidas, rechazo de datos fuera de mes y generación de las dos series con reporte de unidades ausentes.
+
+## Descarga de resultados actualizados
+
+[Descargar series CPF 2025–2026, solo unidades verificadas](resultados/series_cpf_2025_2026_verificados.zip).
+
+El ZIP incluye las dos series generales, las series por unidad, el listado de unidades sin coincidencias y el reporte de fuentes. Aplica `Verificado = SI` del Anexo C y asigna NaN a ambas métricas cuando las dos respuestas CPF indican `No Participó`.
+
+Para reproducirlo con el listado verificado incluido:
+
+```bash
+python3 Main --unidades datos/unidades.csv --anio 2025 --hasta 2026 --salida resultados/2025_2026_verificados
+```
+
+Esta ejecución contiene 620.744 registros por serie, desde el 1 de enero de 2025 hasta el 30 de septiembre de 2026 (21 meses publicados), para 95 unidades solicitadas. Hay 305.859 registros con NaN en ambas métricas por no participación y 30 unidades sin coincidencias. Octubre de 2026 figura sin documentos publicados y no se incluye.
