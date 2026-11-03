@@ -207,13 +207,18 @@ def leer_unidades(path, hoja='CPF'):
             if len(columns) != 1:
                 raise ValueError('Más de una columna Unidad en la cabecera.')
             col = columns[0]
+            verified = [j for j, value in enumerate(row) if normalizar(value) == 'VERIFICADO']
+            if len(verified) > 1 or (not verified and path.suffix.lower() != '.csv'):
+                raise ValueError('Columna Verificado ausente o ambigua en la cabecera.')
             units = {}
             for values in rows[i + 1:]:
+                if verified and (verified[0] >= len(values) or normalizar(values[verified[0]]) != 'SI'):
+                    continue
                 value = values[col] if col < len(values) else None
                 if value is not None and str(value).strip() and normalizar(value) != 'UNIDAD':
                     units.setdefault(normalizar(value), str(value).strip())
             if not units:
-                raise ValueError('La columna Unidad no contiene unidades.')
+                raise ValueError('La columna Unidad no contiene unidades elegibles (Verificado = SI cuando existe).')
             return units
     raise ValueError('No se encontró una columna Unidad en las primeras 50 filas.')
 
@@ -234,6 +239,11 @@ def extraer(path, unidades, fuente):
                     if len(matches) != 1:
                         raise ValueError(f'{path.name}: columna {prefix} ausente o ambigua')
                     columns[label] = matches[0]
+                for label in ('RESPUESTA CPF+', 'RESPUESTA CPF-'):
+                    matches = [j for j, n in enumerate(names) if n == label]
+                    if len(matches) != 1:
+                        raise ValueError(f'{path.name}: columna {label} ausente o ambigua')
+                    columns[label] = matches[0]
                 break
             if i >= 49:
                 break
@@ -253,10 +263,12 @@ def extraer(path, unidades, fuente):
                 raise ValueError(f'{path.name}, fila {row_number}: hora vacía')
             # Se conservan hora original, textos y vacíos. No convertir vacíos
             # en cero ni eliminar horas repetidas por cambios de horario.
+            no_participo = all(normalizar(row[columns[label]]) == 'NO PARTICIPO'
+                               for label in ('RESPUESTA CPF+', 'RESPUESTA CPF-'))
             yield {'Unidad': unidades[key], 'Unidad_fuente': value,
                    'Fecha': fecha.strftime('%Y-%m-%d'), 'Hora': hora,
-                   'Desempeno': row[columns['desempeno']],
-                   'Factor_desempeno': row[columns['factor']],
+                   'Desempeno': float('nan') if no_participo else row[columns['desempeno']],
+                   'Factor_desempeno': float('nan') if no_participo else row[columns['factor']],
                    'Version': fuente.version, 'Fuente': fuente.url}
     finally:
         workbook.close()

@@ -1,5 +1,6 @@
 import argparse
 import csv
+import math
 import tempfile
 import unittest
 from datetime import datetime
@@ -22,7 +23,7 @@ class TestCPF(unittest.TestCase):
         s = w.active
         s.title = sheet
         s.append(['Título'])
-        s.append([None, 'Fecha', 'Hora', 'Unidad', 'Desempeño\n(DCPF)', 'Factor de Desempeño\n(Fd_CPF)'])
+        s.append([None, 'Fecha', 'Hora', 'Unidad', 'Desempeño\n(DCPF)', 'Factor de Desempeño\n(Fd_CPF)', 'Respuesta CPF+', 'respuesta CPF-'])
         s.append([None, fecha, 0, '  HE ÁNGOSTURA U1 ', 0.75, 0.5])
         s.append([None, fecha, 0, 'HE ANGOSTURA U1', 'No Participó', None])
         s.append([None, fecha, 1, 'OTRA', 1, 1])
@@ -38,12 +39,43 @@ class TestCPF(unittest.TestCase):
         w.active.append(['NO INCLUIR'])
         s = w.create_sheet('CPF')
         s.append(['Título'])
-        s.append(['Unidad'])
-        s.append(['HE ÁNGOSTURA U1'])
-        s.append(['  he angostura u1  '])
+        s.append(['Unidad', 'Verificado'])
+        s.append(['HE ÁNGOSTURA U1', 'SI'])
+        s.append(['  he angostura u1  ', ' si '])
+        s.append(['NO INCLUIR', 'NO'])
+        s.append(['SIN VERIFICAR', None])
         s.append([None])
         w.save(path)
         self.assertEqual(cpf.leer_unidades(path), {'HE ANGOSTURA U1': 'HE ÁNGOSTURA U1'})
+
+    def test_no_participo_en_ambas_respuestas(self):
+        path = self.libro()
+        from openpyxl import load_workbook
+        w = load_workbook(path)
+        sheet = w['CPF Horario']
+        sheet.cell(3, 7, 'No Participó')
+        sheet.cell(3, 8, ' no participó ')
+        sheet.cell(4, 7, 'No Participó')
+        sheet.cell(4, 8, 'Participó')
+        w.save(path)
+        w.close()
+        rows = list(cpf.extraer(path, {'HE ANGOSTURA U1': 'u'}, cpf.Fuente(2026, 1, 1, 'url')))
+        self.assertTrue(math.isnan(rows[0]['Desempeno']))
+        self.assertTrue(math.isnan(rows[0]['Factor_desempeno']))
+        csv_path = self.root / 'nan.csv'
+        file, writer = cpf.escribir_csv(csv_path, ['Desempeno', 'Factor_desempeno'])
+        with file:
+            writer.writerow(rows[0])
+        with csv_path.open(encoding='utf-8-sig') as file:
+            exported = next(csv.DictReader(file))
+        self.assertEqual(exported, {'Desempeno': 'nan', 'Factor_desempeno': 'nan'})
+        self.assertEqual(rows[1]['Desempeno'], 'No Participó')
+        self.assertIsNone(rows[1]['Factor_desempeno'])
+
+    def test_csv_filtra_verificados_antes_de_deduplicar(self):
+        path = self.root / 'entrada.csv'
+        path.write_text('Unidad;Verificado\nA;NO\nA;SI\nB;NO\nC; si \nD;\n', encoding='utf-8')
+        self.assertEqual(cpf.leer_unidades(path), {'A': 'A', 'C': 'C'})
 
     def test_preserva_metricas_horas_repetidas_y_vacios(self):
         rows = list(cpf.extraer(self.libro(), {'HE ANGOSTURA U1': 'HE ANGOSTURA U1'},
